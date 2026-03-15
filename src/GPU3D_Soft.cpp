@@ -431,27 +431,31 @@ u32 SoftRenderer3D::AlphaBlend(u32 srccolor, u32 dstcolor, u32 alpha) const noex
     if (dstalpha == 0)
         return srccolor;
 
-    u32 srcR = srccolor & 0x3F;
-    u32 srcG = (srccolor >> 8) & 0x3F;
-    u32 srcB = (srccolor >> 16) & 0x3F;
-
     if (GPU3D.RenderDispCnt & (1<<3))
     {
-        u32 dstR = dstcolor & 0x3F;
-        u32 dstG = (dstcolor >> 8) & 0x3F;
-        u32 dstB = (dstcolor >> 16) & 0x3F;
+        // SWAR: blend R+B in a single multiply pair, G separately
+        u32 srcRB = srccolor & 0x003F003F;
+        u32 dstRB = dstcolor & 0x003F003F;
+        u32 srcG  = (srccolor >> 8) & 0x3F;
+        u32 dstG  = (dstcolor >> 8) & 0x3F;
 
         alpha++;
-        srcR = ((srcR * alpha) + (dstR * (32-alpha))) >> 5;
-        srcG = ((srcG * alpha) + (dstG * (32-alpha))) >> 5;
-        srcB = ((srcB * alpha) + (dstB * (32-alpha))) >> 5;
+        u32 invAlpha = 32 - alpha;
+        u32 resRB = ((srcRB * alpha) + (dstRB * invAlpha)) >> 5;
+        resRB &= 0x003F003F;
+        u32 resG = ((srcG * alpha) + (dstG * invAlpha)) >> 5;
         alpha--;
+
+        if (alpha > dstalpha)
+            dstalpha = alpha;
+
+        return resRB | (resG << 8) | (dstalpha << 24);
     }
 
     if (alpha > dstalpha)
         dstalpha = alpha;
 
-    return srcR | (srcG << 8) | (srcB << 16) | (dstalpha << 24);
+    return (srccolor & 0x003F3F3F) | (dstalpha << 24);
 }
 
 u32 SoftRenderer3D::RenderPixel(const Polygon* polygon, u8 vr, u8 vg, u8 vb, s16 s, s16 t) const
